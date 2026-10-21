@@ -1,0 +1,509 @@
+# FINAL MASTER PROMPT — CARGOTRACE PRODUCTION HARDENING & PRODUCT FINISHING
+
+## ROLE
+
+Act as a Principal Software Architect, Senior Full-Stack Engineer, Application Security Engineer, Database Architect, DevOps Engineer, and Enterprise UX Designer.
+
+You are working on **CargoTrace**, an existing full-stack shipment custody and cargo damage investigation platform. Your responsibility is to transform the current codebase into a complete, secure, polished, scalable, production-deployable client-level product.
+
+This is the final engineering and product-finishing phase.
+
+**Do not merely inspect the project, provide suggestions, generate a report, or tell me what I should change. Inspect the actual files, implement the necessary changes, resolve existing defects, finish incomplete features, and leave the application in its best working state.**
+
+Work autonomously within the existing architecture. Make sensible engineering decisions without repeatedly asking for approval. Preserve working features and avoid unnecessary rewrites.
+
+---
+
+## 1. FIRST: AUDIT THE ENTIRE EXISTING CODEBASE
+
+Inspect the complete project before modifying it.
+
+The project currently uses a structure similar to:
+
+- `client/` — React 19, Vite, frontend
+- `server/` — Node.js, Express, backend
+- MongoDB with Mongoose
+- MongoDB GridFS for cargo evidence files
+- Authentication, sessions, organizations, memberships, and role-based access control
+- Shipments, custody events, inspections, incidents, investigations, evidence, audit logs, and AI-assisted reports
+- Gemini integration where configured
+
+The actual source code is authoritative. Do not assume that previously generated completion reports accurately describe the implementation.
+
+Identify and fix:
+
+- Broken or incomplete features
+- Incorrect imports, exports, routes, middleware, and component integration
+- Frontend/backend API contract mismatches
+- Missing error handling and loading states
+- Broken forms, navigation, buttons, and action handlers
+- Incorrect database queries, schemas, indexes, and relationships
+- Authentication and authorization gaps
+- Incorrect organization-level data isolation
+- Evidence upload, storage, streaming, and preview failures
+- Race conditions and concurrency problems
+- Data corruption or inconsistent state transitions
+- Incomplete driver assignments and transport handover workflows
+- Deployment configuration problems
+- Performance bottlenecks and unnecessary complexity
+- Inconsistent visual design and poor user experience
+- Missing production configuration, logging, and operational safeguards
+
+Trace important workflows from the frontend through the API, authorization layer, business logic, database, file storage, and back to the frontend.
+
+Fix the root cause of each issue rather than hiding errors with superficial workarounds.
+
+Do not replace working code with a simplified demonstration implementation.
+
+---
+
+## 2. PRESERVE THE EXISTING ARCHITECTURE
+
+Maintain the separate `client/` and `server/` applications.
+
+Preserve the existing React, Vite, Node.js, Express, MongoDB, Mongoose, GridFS, and configured Gemini integration unless a specific technical defect requires a justified change.
+
+Keep the frontend, backend, database, and AI runtime responsibilities properly separated.
+
+Do not:
+
+- Rewrite the entire application from scratch.
+- Move everything into one file or one server.
+- introduce a new database without necessity.
+- Remove existing business features to simplify implementation.
+- Replace real persistence with in-memory storage.
+- introduce hardcoded production users, fake records, or mock API responses.
+- create unnecessary microservices.
+- add paid services or paid infrastructure as a requirement.
+- make Firebase mandatory for new evidence uploads when the application is configured to use GridFS.
+
+Keep the project maintainable, modular, and understandable.
+
+---
+
+## 3. COMPLETE THE REAL BUSINESS WORKFLOW
+
+CargoTrace investigates where cargo damage occurred during shipment custody transfers. It is not merely a shipment CRUD dashboard.
+
+Ensure the application supports the complete practical workflow.
+
+### A. Company and shipment management
+
+An authorized company user must be able to:
+
+- Create, view, edit, search, filter, and archive or cancel shipments where appropriate.
+- Store a company reference, shipment description, origin, destination, receiving party, package details, handling instructions, and relevant dates.
+- Define the ordered transport legs and transfer locations.
+- Assign registered drivers and appropriate vehicles to each transport leg.
+- View the shipment's complete custody history and investigation status.
+- See missing records, pending acknowledgements, evidence, incidents, and outstanding actions.
+
+Validate all required fields on both the frontend and backend.
+
+Use consistent identifiers, timestamps, statuses, and error responses.
+
+### B. Driver workflow
+
+Drivers must authenticate using their own accounts.
+
+Drivers should see only shipments and transport legs to which they have been explicitly assigned or otherwise authorized.
+
+They must be able to:
+
+- View their assigned shipment details and relevant handling instructions.
+- Record cargo condition before loading or departure.
+- Upload genuine photographs and supporting documents.
+- Record pickup, departure, arrival, and custody handover events where applicable.
+- Submit a handover with a clear timestamp and responsible parties.
+- Inspect the cargo when receiving it from another driver.
+- Acknowledge the recorded condition or dispute it with a reason and supporting evidence.
+- Report newly discovered damage.
+- Record destination condition and complete authorized delivery-related custody steps.
+
+Prevent a driver from modifying another driver's events or falsely acknowledging a handover on another person's behalf.
+
+Do not automatically mark a handover as accepted merely because an event or photo was uploaded.
+
+### C. Evidence management
+
+Evidence must be associated with the correct shipment and, where applicable, transport leg, custody event, inspection, or damage incident.
+
+Ensure:
+
+- Real uploads work from the browser to the backend.
+- New evidence is stored in MongoDB GridFS when GridFS is the configured storage provider.
+- Evidence metadata is stored consistently in MongoDB.
+- Existing Firebase or legacy evidence remains accessible where the existing implementation supports it.
+- Files can be retrieved and previewed after a backend restart.
+- Each evidence record retains its uploader, upload timestamp, original filename, detected content type, size, associated organization, and relevant relationships.
+- SHA-256 digests are computed from the actual file bytes and stored for integrity verification.
+- File references cannot be changed to expose another organization's evidence.
+- Upload, download, preview, and deletion permissions are enforced server-side.
+- Upload failures, interrupted uploads, and orphaned file records are handled safely.
+- Evidence cannot be silently replaced without preserving the required audit history.
+- File access URLs and responses do not disclose credentials, internal filesystem paths, or sensitive infrastructure details.
+
+Use streaming for large files where appropriate. Avoid loading unnecessarily large files into memory.
+
+Do not invent missing photographs, timestamps, GPS locations, or chain-of-custody records.
+
+### D. Investigation and responsibility analysis
+
+Ensure investigators can reconstruct the chronological custody chain using actual stored records.
+
+The application should identify relevant issues such as:
+
+- Missing custody events
+- Unacknowledged handovers
+- Contradictory condition records
+- Damage reported after a transfer
+- Missing inspection evidence
+- Unusual timestamps or ordering
+- Gaps between expected and recorded events
+
+Distinguish confirmed facts, user-entered statements, inferred anomalies, and missing information.
+
+Gemini-generated summaries must be based on the actual evidence and available records. Validate any referenced evidence IDs or record references before displaying or exporting the report.
+
+AI must not fabricate evidence or assert definitive legal liability without sufficient grounds.
+
+When the AI provider is unavailable, the application should degrade gracefully and retain access to core shipment, evidence, and investigation functionality.
+
+---
+
+## 4. SECURITY HARDENING — HIGHEST PRIORITY
+
+Perform a comprehensive security review and fix all material vulnerabilities discovered in the code.
+
+### Authentication and sessions
+
+- Use secure password hashing with an appropriate password-hashing algorithm and configuration.
+- Never store plaintext passwords or return password hashes in API responses.
+- Enforce robust server-side authentication on every protected route.
+- Use cryptographically secure session tokens.
+- Store only token hashes server-side if compatible with the existing session design.
+- Enforce session expiration and revocation.
+- Invalidate sessions on logout and relevant account security events.
+- Configure cookies securely when cookie-based sessions are used: `HttpOnly`, `Secure` in production, and an appropriate `SameSite` policy.
+- Implement CSRF protection when the authentication architecture requires it.
+- Avoid leaking authentication tokens through URLs, logs, error messages, or browser storage.
+- Add appropriate login throttling and abuse protection.
+
+### Authorization and tenant isolation
+
+Keep authorization checks on the server. Hiding frontend buttons is not security.
+
+- Enforce the existing roles: admin, investigator, reviewer, and viewer, plus any properly implemented driver permissions.
+- Apply least-privilege access.
+- Verify organization membership for every protected resource.
+- Scope database queries and mutations to the authenticated user's authorized organization and resource assignments.
+- Check ownership and permissions for shipments, custody events, evidence, incidents, inspections, investigations, reports, and exports.
+- Prevent insecure direct object reference vulnerabilities.
+- Prevent users from changing organization IDs, role values, uploader IDs, ownership, or other protected fields through request bodies.
+- Never trust a role, organization, driver assignment, or permission supplied by the frontend.
+- For external drivers or carriers, implement explicit shipment-level authorization without weakening organization isolation.
+- Do not allow a user to access another organization's data by guessing an ID or modifying a URL.
+
+### API and input security
+
+- Validate and sanitize inputs using a consistent validation strategy.
+- Validate MongoDB ObjectIds and handle invalid identifiers cleanly.
+- Prevent NoSQL injection, mass assignment, unsafe query construction, path traversal, and unsafe file handling.
+- Configure appropriate CORS allowlists, security headers, request-size limits, and rate limits.
+- Restrict upload size and permitted file types.
+- Do not trust file extensions or client-provided MIME types alone; inspect file signatures where practical.
+- Protect against malformed requests, repeated submissions, and abuse of expensive endpoints.
+- Return safe, consistent error messages without stack traces or secrets in production.
+- Keep detailed internal errors in controlled server logs.
+
+### Secrets and configuration
+
+- Keep database credentials, session secrets, Gemini API keys, and all other secrets in environment variables or the hosting provider's secret manager.
+- Never hardcode secrets or commit populated `.env` files.
+- Maintain safe `.env.example` files with placeholders only.
+- Fail safely and clearly when essential production secrets are missing.
+- Do not print secrets in logs or diagnostic endpoints.
+- Use separate development and production configurations.
+- Do not disable authentication, TLS, or database security merely to make deployment easier.
+
+### Audit logging
+
+Maintain trustworthy audit records for security-sensitive actions, including authentication, role or membership changes, shipment modifications, custody events, evidence operations, and investigation report creation.
+
+Audit entries should identify the actor, action, timestamp, relevant resource, and outcome where appropriate.
+
+Prevent ordinary application users from modifying or deleting audit history. Never log passwords, session tokens, API keys, or other secrets.
+
+---
+
+## 5. DATABASE RELIABILITY AND SCALABILITY
+
+Optimize the existing MongoDB and Mongoose implementation without unnecessary overengineering.
+
+- Review schemas, required fields, defaults, enums, references, and validation.
+- Add appropriate indexes for common lookups, organization-scoped queries, shipment references, event timelines, evidence associations, and session expiration.
+- Enforce appropriate uniqueness constraints, including organization-scoped business identifiers where needed.
+- Prevent duplicate submissions and duplicate handover records where business rules require uniqueness.
+- Use atomic operations and transactions when supported and necessary for consistency.
+- Never assume that several independent writes succeed or fail together.
+- Design safe recovery behavior for partially completed operations.
+- Handle concurrent updates without silently overwriting important changes.
+- Use pagination and server-side filtering for large lists.
+- Avoid unbounded queries, N+1 database operations, and unnecessarily large responses.
+- Avoid loading entire evidence files into memory for routine metadata requests.
+- Keep timestamps consistent and display them appropriately for the user's timezone.
+- Ensure indexes and migrations, if needed, can be applied safely to existing data.
+- Preserve compatibility with existing records and legacy evidence.
+
+The deployment must work with MongoDB Atlas using the existing `MONGODB_URI` configuration.
+
+Respect Atlas free-tier storage and connection limits. Do not claim unlimited scalability or unlimited evidence storage. Provide sensible configurable limits and graceful behavior when storage capacity or database connectivity becomes a problem.
+
+Do not require a paid database plan or paid storage provider for the initial deployment.
+
+---
+
+## 6. FRONTEND POLISH AND PROFESSIONAL UX
+
+Make CargoTrace feel like a real enterprise logistics and investigation product rather than an AI-generated prototype.
+
+Use a consistent design system across the application:
+
+- Clear typography and hierarchy
+- Consistent spacing, colors, borders, shadows, and component sizing
+- Professional navigation and information architecture
+- Responsive layouts for desktop, tablet, and mobile
+- Clear shipment status and custody progression
+- Readable timelines and evidence galleries
+- Appropriate empty states and first-use guidance
+- Loading indicators and skeletons where useful
+- Clear success, warning, and error feedback
+- Form validation and understandable error messages
+- Confirmation dialogs for destructive or irreversible actions
+- Accessible controls, keyboard navigation, focus indicators, and adequate contrast
+- Consistent buttons, tables, cards, badges, dialogs, and form components
+
+Review every page and important user journey, not just the landing page.
+
+Make all visible controls functional. Remove dead buttons, misleading actions, placeholder navigation, broken links, and unfinished UI.
+
+Ensure mobile users can upload evidence and complete essential workflows without layout failures.
+
+Avoid unnecessary animation, excessive gradients, decorative clutter, and dashboard metrics that have no real data source.
+
+Never display fabricated shipment counts, incidents, analytics, or activity records. Empty states should explain what users can do next.
+
+---
+
+## 7. ERROR HANDLING AND RESILIENCE
+
+Make failures predictable, recoverable, and understandable.
+
+Handle at minimum:
+
+- MongoDB connection loss and recovery
+- Invalid or expired sessions
+- Unauthorized and forbidden requests
+- Missing or deleted resources
+- Upload failures and file retrieval failures
+- Gemini timeouts, rate limits, and provider errors
+- Invalid or incomplete user input
+- Network disconnections and API timeouts
+- Duplicate submissions
+- Concurrent changes to the same shipment or custody event
+- Missing environment variables
+- Invalid configuration
+- Storage limits being reached
+- Unexpected backend errors
+
+Use a centralized API error-handling approach and consistent response structures.
+
+The frontend should preserve user input where safe, explain recoverable failures, and avoid misleading success notifications.
+
+Do not swallow errors silently. Do not expose internal stack traces or sensitive implementation details to users.
+
+Implement graceful shutdown, reliable database connection lifecycle handling, and appropriate timeouts.
+
+Use retries only for operations where retrying is safe. Avoid duplicate custody events, duplicate uploads, or duplicate reports caused by automatic retries.
+
+---
+
+## 8. PERFORMANCE AND MAINTAINABILITY
+
+Improve performance and code quality where there is a real benefit.
+
+- Remove unused imports, dead code, duplicated logic, and obsolete dependencies when safe.
+- Keep controllers, services, routes, models, and frontend components separated by responsibility.
+- Use shared utilities for validation, API responses, errors, and permissions where appropriate.
+- Avoid giant components and oversized service functions.
+- Prevent unnecessary React re-renders and repeated API requests where practical.
+- Lazy-load large pages or modules when beneficial.
+- Keep API responses limited to the fields actually needed.
+- Ensure database indexes match real query patterns.
+- Keep logging useful and controlled.
+- Avoid adding dependencies for functionality that can be implemented safely with the existing stack.
+- Pin and maintain compatible dependency versions; do not upgrade everything blindly.
+- Ensure installation works reproducibly from the committed dependency manifests and lockfiles.
+
+Do not introduce speculative abstractions, complicated distributed systems, or microservices that the product does not need.
+
+---
+
+## 9. PRODUCTION DEPLOYMENT READINESS
+
+Prepare the existing application for a realistic initial deployment using a free or no-cost-while-within-limits setup.
+
+The intended deployment includes:
+
+- React/Vite frontend on a suitable static hosting service
+- Node.js/Express backend on a compatible hosting service
+- MongoDB Atlas free tier, subject to current provider limits
+- MongoDB GridFS for evidence files
+- Gemini only when a valid API key and provider access are configured
+
+Do not assume every hosting provider has a permanently free backend. Avoid requiring a paid plan for initial setup, and clearly identify any unavoidable external service limitation.
+
+Ensure:
+
+- The frontend uses a configurable backend API base URL.
+- The backend uses a configurable frontend origin and production port.
+- Production configuration does not depend on localhost.
+- The application binds to the hosting platform's required port and interface.
+- API routes and frontend routing work in production.
+- Health endpoints disclose only non-sensitive operational status.
+- The backend does not report healthy when essential database connectivity is broken.
+- Database connection failures are handled clearly.
+- The application works with HTTPS deployment.
+- Secrets are configured through deployment environment variables.
+- Production build commands and start commands are correct.
+- CORS and cookie settings work for the chosen deployment topology.
+- Upload limits are compatible with the host and proxy configuration.
+- GridFS streaming works through the deployed backend.
+- File URLs use the correct public backend origin where required.
+- There are no hardcoded development URLs, local filesystem assumptions, or references to AI Studio's temporary media storage in production paths.
+- Restarting the backend does not erase persistent shipment data or uploaded evidence.
+
+Preserve and update `.env.example`, deployment instructions, and any essential production configuration files.
+
+Do not create a complicated deployment platform, Kubernetes setup, or paid infrastructure dependency unless the existing application genuinely requires it.
+
+---
+
+## 10. REMOVE TESTING-RELATED PRODUCT WORK
+
+My priority now is the actual product, not a testing project.
+
+Do not spend this phase creating or expanding:
+
+- Unit-test suites
+- Integration-test suites
+- End-to-end-test suites
+- Test dashboards
+- Test result pages
+- Mock data generators
+- Fake production records
+- Testing-only UI
+- Testing documentation
+- Testing frameworks or coverage tooling
+
+Do not add fake users, fake shipments, fake evidence, or seeded business data to the production application.
+
+Remove existing testing-related code or files only when they are genuinely obsolete and safe to remove. Do not delete package scripts, configuration, or files required for normal builds, production runtime, or deployment simply because they are associated with development tooling.
+
+**Important:** You may and should run the existing production builds, inspect compiler output, validate critical configuration, and perform minimal manual smoke checks required to avoid delivering a broken application. Do not create a new testing project or spend time pursuing coverage metrics.
+
+Prioritize fixing product defects, security vulnerabilities, broken workflows, and deployment blockers over cosmetic perfection.
+
+---
+
+## 11. FINAL IMPLEMENTATION RULES
+
+Follow these rules throughout the work:
+
+1. Inspect actual source files before making assumptions.
+2. Implement fixes directly in the project.
+3. Fix root causes, not symptoms.
+4. Preserve working functionality and existing user data.
+5. Make database and API changes backward-compatible where reasonably possible.
+6. Do not silently change business rules.
+7. Do not remove security controls to make a workflow easier.
+8. Do not replace real APIs or database operations with simulated behavior.
+9. Do not fabricate successful uploads, AI results, custody events, or deployment status.
+10. Avoid unnecessary dependencies and paid services.
+11. Keep all secrets out of source control.
+12. Prioritize critical security and data-integrity problems before styling improvements.
+13. If a feature cannot be completed because an external credential or provider is unavailable, implement safe configuration handling and clearly identify the remaining external requirement.
+14. If a deployment requires an action outside the codebase, such as setting Atlas credentials or configuring hosting secrets, provide the exact action rather than pretending it has been completed.
+15. Do not claim that a feature works unless its implementation and available verification support that claim.
+
+---
+
+## 12. EXECUTION ORDER
+
+Complete the work in this order:
+
+**Phase 1 — Architecture and critical defects**
+- Inspect the repository, dependencies, environment configuration, routes, models, and existing workflows.
+- Identify the most consequential defects.
+- Fix build failures, runtime blockers, incorrect API contracts, and data-integrity issues.
+
+**Phase 2 — Security**
+- Correct authentication, session, authorization, tenant-isolation, file-access, validation, and secret-management weaknesses.
+- Ensure every protected action is enforced by the backend.
+
+**Phase 3 — Business workflow**
+- Finish shipment creation, transport-leg assignment, driver access, custody handovers, inspections, evidence uploads, damage reporting, and investigation timelines.
+- Resolve broken links between these features.
+
+**Phase 4 — Data and operational resilience**
+- Improve indexes, pagination, upload streaming, error handling, concurrency safety, logging, and recovery behavior.
+
+**Phase 5 — Product polish**
+- Refine the complete UI, responsiveness, forms, feedback, accessibility, empty states, and navigation.
+- Remove dead or misleading UI and ensure the actual workflows are usable.
+
+**Phase 6 — Deployment preparation**
+- Correct production environment handling, frontend/backend origins, database configuration, build/start commands, health checks, and deployment documentation.
+- Run the available production builds and minimal essential smoke checks.
+- Resolve all verified blockers that can be fixed in the codebase.
+
+Work continuously through these phases. Do not stop after producing an audit report or completing only the first phase.
+
+---
+
+## 13. FINAL DELIVERY SUMMARY
+
+When implementation is complete, provide a concise, truthful summary containing:
+
+1. The important defects found and fixed.
+2. The security and data-integrity improvements made.
+3. The business workflows completed or repaired.
+4. The frontend and UX improvements made.
+5. The deployment and configuration files prepared or changed.
+6. The actual build and smoke-check results, if performed.
+7. Any remaining blocker that requires an external credential, hosting configuration, or manual action.
+8. The exact commands to install dependencies, run locally, build for production, and start the production backend.
+9. The environment variables that must be configured before deployment, with placeholders only.
+10. A clear statement of what is genuinely complete versus what remains unverified.
+
+Do not provide a long list of theoretical future improvements. Implement the work first and report the concrete result.
+
+## DEFINITION OF DONE
+
+CargoTrace is ready for its initial client-facing deployment when:
+
+- The frontend and backend build successfully.
+- Authentication and authorization are enforced server-side.
+- Organization and shipment-level access restrictions are reliable.
+- Company users can manage shipments and transport legs.
+- Authorized drivers can record custody events and submit genuine evidence.
+- Evidence persists in the configured database-backed storage and can be retrieved securely.
+- Investigators can view a coherent, chronological custody timeline.
+- Damage reports and AI-assisted summaries do not fabricate evidence.
+- Core functionality remains usable when the AI provider is unavailable.
+- The UI is consistent, responsive, and free of obvious unfinished controls.
+- Production configuration does not depend on development-only paths or URLs.
+- No known critical security, data-loss, or deployment blocker remains unaddressed.
+- Remaining external setup requirements are explicitly documented.
+
+**Now begin by inspecting the existing codebase and implement the complete finishing pass. Do not stop at planning, auditing, or recommending changes.**

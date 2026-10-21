@@ -1,0 +1,620 @@
+# CargoTrace — Phase 4: Custody, Condition Inspections, Damage Incidents & Evidence
+
+## ROLE
+
+Act as a senior full-stack engineer, backend architect, logistics-domain specialist, and application-security engineer.
+
+You are continuing development of the existing CargoTrace application in Google AI Studio.
+
+Phase 1 (Foundation), Phase 2 (Authentication and Organizations), and Phase 3 (Shipment Management and CRUD) have been reported complete.
+
+Implement **Phase 4: Custody, Inspections, Damage Incidents, and Evidence Management** directly in the existing codebase.
+
+This is an incremental implementation, not a rebuild. Inspect the actual repository before making changes, reuse existing modules, and preserve all working features.
+
+The goal is to create a reliable, traceable record of cargo custody and physical condition throughout a shipment's journey. This evidence will support investigation in later phases, but Phase 4 must not automatically determine who is legally responsible for damage.
+
+---
+
+## 1. MANDATORY REPOSITORY INSPECTION
+
+Before coding, inspect the existing implementation, including:
+
+- `client/` and `server/` structures.
+- Shipment model, routes, services, controllers, and validation.
+- Existing API versioning, expected to use `/api/v1/`.
+- Authentication and organization context in `authenticate.js`.
+- Authorization middleware and the central RBAC permission matrix.
+- Organization, membership, session, and audit models.
+- Centralized client API wrapper at `client/src/lib/apiClient.js`.
+- Existing React routes, layouts, shipment list, shipment detail, and shipment forms.
+- MongoDB configuration, environment validation, and error handling.
+- Existing Firebase configuration and any installed Firebase SDK or Firebase Admin integration.
+- Existing tests and available build/test scripts.
+
+The Phase 3 shipment implementation is the foundation for this phase. Determine how shipment ownership, references, status, and authorized access currently work.
+
+Do not create duplicate shipment models, authentication systems, organization models, API clients, audit systems, or Firebase configurations.
+
+Before implementation, briefly state what you found and the minimal files or modules you intend to add or modify. Then proceed with implementation without stopping at a plan.
+
+If an existing implementation differs from these assumptions, adapt to the actual code.
+
+## 2. PRESERVE THE EXISTING ARCHITECTURE
+
+Continue using:
+
+**Frontend**
+- React 19 and Vite.
+- Existing routing, layout, styles, and component conventions.
+- Existing centralized API client.
+- Existing authentication and permission context.
+
+**Backend**
+- Node.js and Express.
+- MongoDB and Mongoose.
+- Existing `/api/v1/` API conventions.
+- Existing authentication, organization isolation, RBAC, and audit infrastructure.
+- Existing centralized validation and error handling.
+
+**Evidence storage**
+- Firebase Storage, using the project's existing configuration where available.
+
+Keep `client/` and `server/` independent, with their existing dependencies, environment files, and runtime servers.
+
+Do not upgrade major dependencies unnecessarily, replace working Phase 3 code, weaken access controls, or introduce unrelated architecture changes.
+
+Do not place service-account credentials or other private Firebase secrets in frontend code or commit them to source control.
+
+## 3. PHASE 4 FUNCTIONAL SCOPE
+
+Implement four connected capabilities:
+
+1. Custody records and handovers.
+2. Cargo condition inspections.
+3. Damage incident records.
+4. Evidence attachment and retrieval.
+
+Every record must be linked to its shipment and owning organization. Related records must remain navigable from the shipment details interface.
+
+### A. Custody and handover records
+
+A shipment may pass through multiple parties, such as loaders, drivers, transport operators, hub personnel, and receiving teams.
+
+Create a custody-event model that records the relevant custody transitions.
+
+Suggested fields:
+
+- `shipment`: shipment reference.
+- `organization`: owning organization.
+- `eventType`: controlled event type.
+- `fromParty`: previous custodian, where applicable.
+- `toParty`: receiving custodian, where applicable.
+- `location`: location of the event.
+- `occurredAt`: reported or observed event time.
+- `recordedAt`: server-generated record creation time.
+- `recordedBy`: authenticated user.
+- `notes`: optional operational context.
+- `evidence`: references to associated evidence records, where applicable.
+
+Use a controlled event-type list appropriate to the actual workflow, for example:
+
+- `CUSTODY_HANDOVER`
+- `PICKUP`
+- `HUB_ARRIVAL`
+- `HUB_DEPARTURE`
+- `RECEIPT_BY_CUSTODIAN`
+- `OTHER`
+
+Avoid inventing a confirmed handover when only one party has submitted an unverified record.
+
+**Custody integrity requirements:**
+
+- Preserve the identity of the person who recorded the event.
+- Distinguish event occurrence time from database record creation time.
+- Preserve reported times and record any permitted corrections through an auditable amendment mechanism.
+- Do not allow ordinary users to silently rewrite or delete historical custody events.
+- Where confirmation by both parties is supported, record each party's acknowledgement separately.
+- Clearly distinguish a proposed or disputed handover from a confirmed handover.
+- Never treat a shipment's `CLOSED` status as proof of delivery or proof of an accepted handover.
+
+A shipment may have a missing custody event. Do not fabricate one to make its timeline appear complete.
+
+### B. Cargo condition inspections
+
+Allow authorized personnel to record cargo condition at relevant points, including loading, transfer, hub arrival, and destination receipt.
+
+Suggested fields:
+
+- `shipment`: shipment reference.
+- `organization`: owning organization.
+- `inspectionType`: controlled inspection category.
+- `location`: inspection location.
+- `inspectedAt`: reported inspection time.
+- `recordedAt`: server-generated record time.
+- `inspectedBy`: authenticated user.
+- `overallCondition`: controlled condition value.
+- `packagingCondition`: controlled condition value.
+- `sealCondition`: controlled condition value, where applicable.
+- `observations`: inspection notes.
+- `visibleDamage`: whether visible damage was observed.
+- `damageDescription`: optional damage description.
+- `evidence`: associated evidence references.
+
+Suggested inspection categories:
+
+- `ORIGIN`
+- `CUSTODY_TRANSFER`
+- `HUB`
+- `DESTINATION`
+- `OTHER`
+
+Suggested overall condition values:
+
+- `GOOD`
+- `MINOR_DAMAGE`
+- `MAJOR_DAMAGE`
+- `UNKNOWN`
+
+Represent uninspected or unrecorded properties as unknown or not recorded. Do not default missing information to `GOOD`.
+
+Support clear, structured observations without requiring users to complete fields that are genuinely inapplicable.
+
+**Inspection integrity requirements:**
+
+- Record who performed and submitted the inspection.
+- Preserve the difference between when an inspection reportedly happened and when it was recorded.
+- Support evidence attachments.
+- Do not silently overwrite historical inspection findings.
+- If correction is necessary, use a controlled amendment or superseding-record workflow with an audit trail.
+- Make the recorded condition visible on the shipment detail page.
+- Do not infer that cargo was undamaged between two inspections merely because no damage was reported.
+
+### C. Damage incident management
+
+Allow authorized users to report a damage incident against an existing shipment.
+
+Suggested fields:
+
+- `shipment`: shipment reference.
+- `organization`: owning organization.
+- `incidentReference`: server-generated unique incident identifier.
+- `title`: short incident description.
+- `description`: detailed damage observations.
+- `damageType`: controlled category.
+- `severity`: controlled severity.
+- `location`: where the damage was reportedly observed.
+- `occurredAt`: reported or estimated occurrence time, when known.
+- `discoveredAt`: when the damage was discovered.
+- `reportedAt`: server-generated report creation time.
+- `reportedBy`: authenticated user.
+- `affectedCargo`: description of the affected goods or packages.
+- `status`: controlled incident status.
+- `relatedInspections`: references to relevant inspections.
+- `relatedCustodyEvents`: references to relevant custody records.
+- `evidence`: references to associated evidence.
+
+Suggested damage categories:
+
+- `PACKAGING_DAMAGE`
+- `PHYSICAL_DAMAGE`
+- `WATER_DAMAGE`
+- `CONTAMINATION`
+- `MISSING_OR_DAMAGED_PARTS`
+- `OTHER`
+
+Suggested severity:
+
+- `MINOR`
+- `MODERATE`
+- `MAJOR`
+- `UNKNOWN`
+
+Suggested initial incident statuses:
+
+- `OPEN`
+- `UNDER_REVIEW`
+- `RESOLVED`
+
+Use controlled values and validate every transition.
+
+Allow authorized users to create and view incidents, and update permitted incident fields without erasing the original observations or audit history.
+
+If an incident is marked resolved, preserve the resolution note, actor, and timestamp. Do not interpret resolution as acceptance of liability or a final legal determination.
+
+Do not automatically assign blame to a driver, loader, carrier, or receiving team.
+
+## 4. EVIDENCE MANAGEMENT WITH FIREBASE STORAGE
+
+Evidence is central to CargoTrace. Implement secure evidence uploads and metadata persistence.
+
+Supported evidence may include:
+
+- Photographs of damaged cargo.
+- Photographs of packaging and seals.
+- Inspection photographs.
+- Supporting documents and permitted file attachments.
+
+Inspect the existing Firebase configuration and use the established integration if one exists.
+
+Do not create a second Firebase project or duplicate configuration.
+
+### Evidence metadata
+
+Create an evidence model containing fields equivalent to:
+
+- `shipment`: owning shipment.
+- `organization`: owning organization.
+- `evidenceReference`: unique server-generated identifier.
+- `originalFilename`: sanitized display filename.
+- `storagePath`: internal Firebase Storage object path.
+- `contentType`: verified or validated content type.
+- `sizeBytes`: actual uploaded size.
+- `sha256`: file digest where feasible.
+- `uploadedBy`: authenticated user.
+- `uploadedAt`: server-generated timestamp.
+- `description`: optional evidence description.
+- `evidenceType`: controlled evidence category.
+- `custodyEvent`: optional related custody event.
+- `inspection`: optional related inspection.
+- `incident`: optional related damage incident.
+
+Validate relationships so that an attachment cannot reference an incident, inspection, custody event, or shipment belonging to another organization.
+
+### Upload security
+
+Implement an appropriate secure upload strategy compatible with the existing Firebase setup.
+
+Prefer a server-authorized upload flow or short-lived upload authorization when supported by the existing infrastructure.
+
+If direct client-to-Firebase uploads are necessary, configure and document appropriate Firebase Storage security rules and ensure that the server independently verifies the resulting object and metadata before treating the upload as accepted evidence.
+
+Requirements:
+
+- Enforce a configurable maximum file size.
+- Use an explicit allowlist of permitted file types.
+- Do not trust the filename or client-provided MIME type alone.
+- Validate actual file content where practical.
+- Generate safe, unique object paths.
+- Prevent path traversal and arbitrary object-path access.
+- Require authentication and organization-level authorization.
+- Keep the storage bucket private by default.
+- Never expose permanent public download URLs for sensitive cargo evidence.
+- Authorize evidence access on every retrieval.
+- Use short-lived download URLs or an authenticated streaming mechanism where appropriate.
+- Prevent unauthorized replacement or deletion of previously accepted evidence.
+- Do not store binary files directly in MongoDB.
+- Store metadata and storage references in MongoDB.
+- Handle failed uploads and orphaned storage objects safely.
+- Do not log private download URLs, secrets, or unnecessary sensitive data.
+
+If Firebase credentials or configuration are unavailable, implement the non-secret portions that can safely be completed and report exactly which setup is required. Do not fake successful uploads or substitute permanent local-file storage without approval.
+
+### Evidence integrity
+
+Treat accepted evidence as an auditable record.
+
+Where practical, compute a SHA-256 digest and store it with the metadata to help detect accidental file changes.
+
+A digest supports integrity checks but does not independently prove when a photograph was taken or whether its contents are authentic.
+
+Do not claim that file hashes establish legal chain of custody.
+
+If evidence needs to be superseded or withdrawn, preserve its audit history and the reason for the change rather than silently erasing the record.
+
+## 5. DATA RELATIONSHIPS AND VALIDATION
+
+Inspect the existing Mongoose conventions and implement appropriate references and indexes.
+
+Conceptually:
+
+- One shipment has many custody events.
+- One shipment has many inspections.
+- One shipment has many damage incidents.
+- One shipment has many evidence records.
+- An inspection may reference multiple evidence records.
+- A custody event may reference multiple evidence records.
+- An incident may reference multiple evidence records and relevant inspections or custody events.
+
+Use references rather than uncontrolled embedded copies of entire records when that better fits the existing application.
+
+Enforce organization consistency across all relationships.
+
+For example, an incident cannot reference an inspection from another shipment or organization. An evidence record cannot reference a custody event belonging to a different shipment.
+
+Validate:
+
+- Required fields and field lengths.
+- Enum values.
+- MongoDB identifiers.
+- Timestamp formats and invalid dates.
+- Maximum upload size.
+- File type and file-content constraints.
+- Relationship ownership.
+- Duplicate or conflicting references where relevant.
+- Permitted update fields.
+- Allowed status transitions.
+
+Do not rely on frontend validation as the security boundary.
+
+Use database indexes for frequently queried fields, including shipment, organization, incident reference, and relevant timestamps.
+
+Consider compound indexes for organization-scoped queries.
+
+Avoid introducing unnecessary indexes or a complicated event-sourcing architecture.
+
+## 6. API ENDPOINTS
+
+Follow the existing `/api/v1/` routing conventions, response envelopes, middleware, and error handling.
+
+Implement equivalent endpoints, adapting names to existing conventions where necessary.
+
+### Custody events
+
+- `POST /api/v1/shipments/:shipmentId/custody-events`
+- `GET /api/v1/shipments/:shipmentId/custody-events`
+- `GET /api/v1/custody-events/:id`
+
+### Inspections
+
+- `POST /api/v1/shipments/:shipmentId/inspections`
+- `GET /api/v1/shipments/:shipmentId/inspections`
+- `GET /api/v1/inspections/:id`
+
+### Damage incidents
+
+- `POST /api/v1/shipments/:shipmentId/incidents`
+- `GET /api/v1/shipments/:shipmentId/incidents`
+- `GET /api/v1/incidents/:id`
+- `PATCH /api/v1/incidents/:id`
+
+### Evidence
+
+- `POST /api/v1/shipments/:shipmentId/evidence`
+- `GET /api/v1/shipments/:shipmentId/evidence`
+- `GET /api/v1/evidence/:id`
+- An authorized evidence-download or upload-authorization endpoint as appropriate to the existing Firebase architecture.
+
+Add further endpoints only when necessary for a complete, secure workflow.
+
+Support pagination for collections where appropriate.
+
+Use consistent HTTP status codes and existing error middleware. Validate all IDs, request bodies, and query parameters.
+
+Do not implement destructive endpoints that erase accepted historical records.
+
+If a file upload uses a multi-step process, ensure the application clearly distinguishes an upload in progress from accepted evidence.
+
+## 7. RBAC AND MULTI-TENANT ISOLATION
+
+Reuse the existing roles:
+
+- `admin`
+- `investigator`
+- `reviewer`
+- `viewer`
+
+Inspect `auth/permissions.js` and the actual middleware before implementing permissions.
+
+Use a least-privilege policy:
+
+- **Admin:** manage authorized organizational records and team access according to existing permissions.
+- **Investigator:** create and manage permitted custody records, inspections, and incidents; upload and review evidence.
+- **Reviewer:** read relevant records and evidence, with write access only if the established policy explicitly allows it.
+- **Viewer:** read-only access to authorized shipment records and permitted evidence.
+
+Do not grant new privileges silently. Add any required permissions to the existing central permission matrix.
+
+Every request must verify authentication, active organization membership, the required permission, and ownership of the shipment and related records.
+
+Never trust an organization ID, role, uploader identity, or storage path supplied by the client.
+
+All database queries must be organization-scoped.
+
+Evidence retrieval must also verify that the evidence belongs to the authorized organization and shipment.
+
+Avoid leaking the existence or details of inaccessible records across organization boundaries.
+
+## 8. AUDIT TRAIL
+
+Integrate all relevant operations with the existing append-only audit log.
+
+Add appropriate events for:
+
+- Custody event creation.
+- Custody acknowledgement, if implemented.
+- Inspection creation.
+- Inspection amendment or supersession.
+- Damage incident creation and update.
+- Evidence upload initiation and acceptance.
+- Evidence access where required by the existing security policy.
+- Evidence withdrawal or supersession, if supported.
+
+Record the authenticated actor, organization, resource reference, event type, timestamp, and relevant non-sensitive metadata.
+
+Do not store passwords, session tokens, private download URLs, or unnecessary file contents in audit events.
+
+Never silently rewrite historical audit events.
+
+If an audit write fails, follow the existing application's reliability policy and report the failure accurately. Do not claim an operation was fully audited if the audit record was not persisted.
+
+## 9. FRONTEND EXPERIENCE
+
+Integrate the new features into the existing shipment detail page and navigation.
+
+Build reusable components consistent with the existing application, such as:
+
+- `CustodyTimeline`
+- `CustodyEventForm`
+- `InspectionList`
+- `InspectionForm`
+- `IncidentList`
+- `IncidentForm`
+- `EvidenceGallery`
+- `EvidenceUpload`
+- `EvidenceDetails`
+
+Reuse existing equivalents where available.
+
+### Shipment detail interface
+
+Organize the shipment details into clear sections or tabs:
+
+1. Overview.
+2. Custody history.
+3. Condition inspections.
+4. Damage incidents.
+5. Evidence.
+
+The shipment reference should remain visible, and every record should link back to its shipment.
+
+### Custody interface
+
+Display events chronologically with:
+
+- Event type.
+- Location.
+- Previous and receiving custodian where recorded.
+- Reported occurrence time.
+- Record creation time where useful.
+- Recorded-by identity.
+- Confirmation or dispute status where supported.
+- Associated evidence.
+
+Clearly distinguish unconfirmed events and missing information.
+
+### Inspection interface
+
+Provide a structured inspection form with condition fields, observations, and evidence attachments.
+
+Display inspection results in a readable history. Do not represent an unperformed inspection as a successful inspection.
+
+### Damage incident interface
+
+Allow authorized users to report a damage incident, describe affected cargo, set severity, record when it was discovered, and attach relevant evidence.
+
+Display incident status and linked inspections or custody records.
+
+### Evidence interface
+
+Display thumbnails for supported images, safe file metadata, descriptions, upload status, and associations with relevant records.
+
+Do not render uploaded content as trusted HTML or execute uploaded files.
+
+Provide accessible loading, empty, error, upload-progress, and retry states.
+
+Prevent duplicate submissions and display validation errors clearly.
+
+Reuse `apiClient.js` and the existing authentication context.
+
+Never expose unauthorized actions solely because a user knows an endpoint or resource ID; enforce permissions on the backend.
+
+## 10. TESTING REQUIREMENTS
+
+Use the existing test framework and project scripts.
+
+Add tests for the following.
+
+### Custody events
+
+- Create and retrieve a valid custody event.
+- Reject missing or invalid fields.
+- Verify occurrence time and record creation time are handled separately.
+- Verify unauthorized users cannot alter historical records.
+- Verify organization isolation.
+
+### Inspections
+
+- Create and retrieve an inspection.
+- Validate condition fields and inspection type.
+- Reject invalid timestamps and invalid relationships.
+- Ensure missing condition data is not treated as good condition.
+- Verify amendments preserve an audit trail.
+
+### Damage incidents
+
+- Create and retrieve an incident.
+- Validate severity, category, and status.
+- Verify authorized updates.
+- Reject invalid status transitions.
+- Ensure incident references are unique.
+- Verify linked records belong to the same shipment and organization.
+
+### Evidence
+
+- Reject unsupported file types and oversized files.
+- Reject unauthorized upload and download requests.
+- Verify metadata is associated with the correct shipment.
+- Verify cross-organization evidence access is blocked.
+- Verify upload failures do not create falsely accepted evidence records.
+- Verify evidence cannot silently be replaced or deleted.
+- Verify relevant audit events are persisted.
+
+### Regression and security
+
+- Confirm existing authentication still works.
+- Confirm Phase 3 shipment CRUD still works.
+- Test admin, investigator, reviewer, and viewer permissions.
+- Test cross-tenant access using separate organizations.
+- Test malformed IDs and hostile request parameters.
+- Test that unauthorized requests cannot exploit client-supplied organization IDs.
+
+Use isolated test data and a safe test database. Never clear or overwrite the user's real development database during testing.
+
+Run the available client/server build and test scripts. Report only tests that were actually executed.
+
+## 11. EXPLICITLY OUT OF SCOPE
+
+Do not implement the following in Phase 4:
+
+- AI-generated damage attribution.
+- Automatic determination of legal or financial liability.
+- AI investigation summaries.
+- Full investigation case-management workflows.
+- Automated claims or insurance processing.
+- Billing and invoicing.
+- Delivery confirmation as a separate product.
+- A new authentication or RBAC architecture.
+- Mock shipment records or fabricated evidence.
+- Unrelated redesigns or dependency upgrades.
+
+Phase 4 supplies reliable evidence and event records. Phase 5 will build the investigation timeline and identify evidence gaps. Phase 6 will introduce evidence-grounded AI analysis.
+
+## 12. DEFINITION OF DONE
+
+Phase 4 is complete only when:
+
+1. Authorized users can create and retrieve custody events.
+2. Authorized users can create and retrieve condition inspections.
+3. Authorized users can create, retrieve, and update permitted damage incident fields.
+4. Evidence can be securely uploaded, persisted, and retrieved through the configured Firebase integration.
+5. Every record is associated with the correct shipment and organization.
+6. Historical records and audit trails are not silently overwritten.
+7. Cross-organization access is blocked by server-side authorization.
+8. Evidence validation and file access controls are enforced.
+9. The shipment detail interface displays the new records using real API data.
+10. Phase 1, Phase 2, and Phase 3 functionality remains intact.
+11. Relevant tests and available build checks pass.
+12. No fake data or false verification claims have been introduced.
+
+## 13. FINAL REPORT
+
+After implementation, provide:
+
+- Phase 4 completion status.
+- Files created and modified.
+- Data models, indexes, and relationships.
+- API endpoints implemented.
+- Firebase upload and download architecture.
+- Permissions and security controls.
+- Audit events implemented.
+- Tests actually executed and their results.
+- Client/server build results.
+- Required environment variables or Firebase setup.
+- Unresolved issues and any incomplete functionality.
+
+Clearly distinguish implemented, tested, and unverified behavior.
+
+If Firebase configuration is missing, report the exact missing requirement rather than claiming evidence uploads work.
+
+Begin by inspecting the existing CargoTrace repository and then implement Phase 4 directly, preserving the established architecture and all working features.

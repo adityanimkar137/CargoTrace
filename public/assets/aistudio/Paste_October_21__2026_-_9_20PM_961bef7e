@@ -1,0 +1,649 @@
+# CargoTrace — Investigation Workflow, Event Linkage, UI & Evidence Architecture Overhaul
+
+## Role
+
+Act as a senior full-stack engineer, software architect, UX designer, and digital cargo-investigation systems specialist. Modify the existing CargoTrace application into a functional, interconnected investigation platform—not merely an incident tracker with an AI-generated report.
+
+**Primary objective:** Investigators must be able to reconstruct what happened to a shipment, connect every relevant event and piece of evidence, identify gaps in the chain of custody, and produce an auditable, evidence-grounded investigation report.
+
+Do not merely analyze the codebase or produce a plan. Inspect the existing implementation, identify the root causes, and implement the improvements in the actual project. Preserve working functionality and existing data.
+
+---
+
+# 1. Mandatory constraints
+
+- Preserve the existing separate `client/` and `server/` architecture.
+- Keep React and Vite on the frontend, Node.js and Express on the backend, MongoDB/Mongoose for persistence, Firebase Storage for evidence files, and the existing Gemini integration.
+- Preserve the existing authentication, organizations, memberships, RBAC, session management, audit logging, and report history.
+- Do not replace working modules with mock interfaces or hardcoded demonstration data.
+- Do not delete existing shipments, incidents, inspections, custody records, evidence, reports, or audit history.
+- Do not silently migrate, merge, or deduplicate records without a reversible migration and a documented decision.
+- Do not introduce fake event relationships simply to make the interface look complete.
+- Do not assign liability, fabricate evidence, invent custody events, or claim that an investigation is complete when required relationships are missing.
+- Preserve existing certified report versions as immutable historical records.
+- Do not expose secrets, connection strings, API keys, or credentials.
+- Fix root causes in the data model and backend services, not just the frontend display.
+
+First inspect the repository, existing schemas, API routes, permissions, and frontend module structure. Reuse the current implementation where appropriate. Then implement the changes incrementally and run the relevant tests.
+
+# 2. Core architectural change: CargoTrace must become event-connected
+
+The current workflow is too disconnected. Shipments, custody events, inspections, incidents, evidence, anomalies, and AI reports can appear as separate records without reliable relationships between them.
+
+Implement a persistent, explicit relationship model that lets an investigator connect these records into one investigation.
+
+## 2.1 Required entities
+
+Inspect and reuse existing schemas for:
+
+- Organization
+- User and Membership
+- Shipment
+- Custody Event / Handover
+- Inspection
+- Damage Incident / Exception
+- Evidence Artifact
+- Anomaly / Evidence Gap
+- Investigation Review
+- AI Case Analysis / Report
+- Audit Log
+
+Do not create duplicate entity types if equivalent models already exist.
+
+## 2.2 Implement explicit event relationships
+
+Create a normalized, validated relationship mechanism suitable for the existing architecture. It may use a dedicated relationship collection or appropriately designed references on existing models, depending on the current schema.
+
+Each relationship should support fields equivalent to:
+
+- Unique relationship ID
+- Organization ID
+- Shipment ID
+- Source record type and ID
+- Target record type and ID
+- Relationship type
+- Optional explanation or investigation note
+- Created by
+- Created timestamp
+- Updated timestamp, if edits are permitted
+- Optional relationship provenance or supporting evidence
+- Audit history for creation, removal, and relevant changes
+
+Use enums and a documented relationship compatibility matrix. Examples of relationship types:
+
+- `SHIPMENT_HAS_CUSTODY_EVENT`
+- `SHIPMENT_HAS_INSPECTION`
+- `SHIPMENT_HAS_INCIDENT`
+- `SHIPMENT_HAS_EVIDENCE`
+- `CUSTODY_EVENT_PRECEDES_CUSTODY_EVENT`
+- `INSPECTION_OBSERVED_DURING_CUSTODY`
+- `INSPECTION_DOCUMENTS_INCIDENT`
+- `INCIDENT_SUPPORTED_BY_EVIDENCE`
+- `INSPECTION_SUPPORTED_BY_EVIDENCE`
+- `EVIDENCE_CORROBORATES_EVIDENCE`
+- `INCIDENT_OCCURRED_DURING_CUSTODY`
+- `ANOMALY_CONCERNS_RECORD`
+- `REPORT_CITES_RECORD`
+
+Adapt these names to the existing conventions. Do not implement an unnecessarily complicated graph database when MongoDB can support the required relationships.
+
+Relationships must be stored persistently, loaded from the backend, scoped to the correct organization, and visible from both connected records.
+
+### Relationship validation
+
+Before saving a relationship, validate that:
+
+1. Both records exist.
+2. Both records belong to the authorized organization.
+3. Both records belong to the same shipment unless an explicitly supported cross-shipment relationship is permitted.
+4. The relationship type is valid for those record types.
+5. The requesting user has permission to create or remove it.
+6. Duplicate relationships are handled safely.
+7. Invalid self-links and prohibited cycles are rejected where applicable.
+8. Referential integrity is maintained when records are archived or corrected.
+
+Do not allow a frontend-supplied organization ID or record ID to bypass authorization.
+
+# 3. Add investigator-controlled linking throughout the UI
+
+Event linking must be a first-class capability, not a hidden database operation.
+
+## 3.1 Link records from every relevant module
+
+Implement a consistent **Link Related Record** action in:
+
+- Shipments
+- Custody
+- Inspections
+- Incidents
+- Evidence
+- Anomalies & Gaps
+- Investigation Review
+- AI Case Analysis
+
+The action should open a clear modal, drawer, or full-width panel.
+
+The investigator must be able to:
+
+1. Select a record type.
+2. Search existing records within the authorized organization and shipment.
+3. Filter by date, location, category, severity, record ID, and status where relevant.
+4. Preview the selected record before linking it.
+5. Select an appropriate relationship type.
+6. Add an explanation for why the records are related.
+7. Review the proposed relationship.
+8. Save and receive visible confirmation.
+9. See the newly linked record immediately without a page reload where practical.
+
+Show validation errors in plain language.
+
+Example:
+
+**Link Incident to Inspection**
+
+- Incident: `INC-202610-B0DA`
+- Inspection: Mumbai destination inspection
+- Relationship: `INSPECTION_DOCUMENTS_INCIDENT`
+- Explanation: Destination inspection records the same reported damage and broken seal.
+- Action: `Create Link`
+
+Only display the example as real data when the actual records exist. Never silently substitute another record.
+
+## 3.2 Display links bidirectionally
+
+If an incident is linked to an inspection, both record detail pages must show the relationship.
+
+Example incident detail:
+
+**Related records**
+- Shipment: `CT-202610-C655`
+- Destination inspection: actual inspection ID and date
+- Evidence: `EVD-202610-3FCF`
+- Relevant custody handover: actual event ID, if verified
+- Related anomalies: current findings
+
+Each related record should open directly from the interface.
+
+Every relationship should show its type, source and target, creation time, and who established it. Include an explicit remove-link action subject to permissions, with confirmation and an audit event. Removing a relationship must not delete either underlying record.
+
+# 4. Build a dedicated Investigation Workspace
+
+Create a unified investigation view for each shipment or investigation case.
+
+It should be the primary workspace for investigators and the principal source for report generation.
+
+## 4.1 Investigation overview
+
+Display:
+
+- Shipment ID and tracking reference
+- Cargo description
+- Origin and destination
+- Carrier
+- Shipment status
+- Investigation status
+- Incident severity and current incident status
+- Number of inspections, custody events, incidents, and evidence artifacts
+- Number of unresolved anomalies and missing relationships
+- Last activity
+- Assigned investigator, if the current application supports assignment
+
+Make every count clickable to open the corresponding records.
+
+Distinguish clearly between:
+- Verified facts
+- Recorded observations
+- Investigator interpretations
+- Unresolved questions
+- AI-generated hypotheses
+
+## 4.2 Unified event timeline
+
+Build a chronological timeline from persisted events and records.
+
+Include relevant events such as:
+
+- Shipment registration
+- Origin inspection
+- Evidence upload
+- Pickup
+- Custody handover
+- Hub arrival or departure, when recorded
+- Destination inspection
+- Incident creation and status changes
+- Evidence and record linking
+- Anomaly creation and resolution
+- Investigation review
+- Report generation and certification
+
+Use actual timestamps from the database. Do not invent missing events or silently infer a custody transfer.
+
+Each event should show:
+
+- Timestamp and timezone
+- Event type
+- Location
+- Responsible actor, if recorded
+- Record ID
+- Condition findings or notes
+- Related records
+- Evidence references
+- Missing or uncertain information
+- A direct action to open the record or create a relationship
+
+Support chronological sorting, filters, and a clear indication of gaps between known events.
+
+## 4.3 Relationship graph
+
+Provide a readable visual relationship graph that shows the connected investigation.
+
+Example structure:
+
+Shipment
+→ Origin inspection
+→ Dispatch evidence
+→ Pickup custody event
+→ Transit handover(s)
+→ Destination inspection
+→ Damage incident
+→ Damage photographs
+→ Investigation findings
+→ AI report
+
+This is an example of the intended investigation structure, not a mandatory sequence for every shipment.
+
+Only draw edges backed by actual persisted relationships. Visually distinguish:
+
+- Verified relationships
+- Missing relationships
+- Suspected relationships requiring investigator confirmation
+- Invalid or conflicting relationships
+
+Selecting a node opens its record. Selecting an edge displays its relationship type and audit details. Authorized investigators can create a missing edge from the graph.
+
+The graph must not imply that two events are connected merely because they share a shipment ID, location, or date.
+
+## 4.4 Evidence comparison
+
+Provide a practical comparison view for origin and destination condition records.
+
+Allow the investigator to view:
+
+- Origin inspection and its linked photographs
+- Destination inspection and its linked photographs
+- Recorded packaging and seal conditions
+- Actual timestamps and locations
+- Differences between recorded conditions
+- Missing photographs or missing associations
+
+Do not use AI-generated image descriptions as a substitute for verified inspection observations.
+
+# 5. Improve anomaly detection and evidence completeness
+
+Correct the existing behavior where the interface appears to show linked evidence but deterministic analysis still reports that evidence as missing.
+
+Trace the full data path:
+
+Frontend record selection
+→ API request
+→ authorization
+→ relationship persistence
+→ database query
+→ anomaly engine
+→ report context
+→ AI generation
+
+Ensure every stage uses the same canonical record IDs and relationship semantics.
+
+## 5.1 Separate different types of missing information
+
+Distinguish:
+
+1. Evidence file does not exist.
+2. Evidence exists but is not linked to the inspection.
+3. Evidence exists but is not linked to the incident.
+4. Incident is not linked to the relevant inspection.
+5. Incident is linked to the wrong inspection.
+6. Custody continuity is incomplete.
+7. Event timestamps conflict.
+8. Required observations or metadata are missing.
+9. A record is linked but its contents do not support the associated claim.
+
+Do not collapse all these situations into a single “missing evidence” warning.
+
+## 5.2 Anomaly lifecycle
+
+Support meaningful statuses:
+
+- `OPEN`
+- `ACKNOWLEDGED`
+- `ADDRESSED`
+- `NOT_APPLICABLE`
+
+Preserve existing compatible statuses and migrate carefully if needed.
+
+`ACKNOWLEDGED` means reviewed, not fixed.
+
+`ADDRESSED` means the underlying requirement was satisfied or a justified explanation was recorded and verified according to the rule.
+
+`NOT_APPLICABLE` requires a documented explanation and appropriate authorization.
+
+Where possible, the system should automatically reevaluate deterministic rules after a relationship or evidence change. If reevaluation is manual, show the last evaluation time and provide an explicit rerun action.
+
+Never mark a finding resolved just because the related incident is marked `RESOLVED`.
+
+Fix contradictory summary counts so totals, severities, open findings, and evidence checklist requirements accurately reflect the underlying data. Make the counting rules explicit in the interface.
+
+# 6. Redesign the AI investigation report
+
+AI must consume the connected investigation graph, not simply summarize isolated database records.
+
+Before generating a report, construct a validated case context containing:
+
+- Shipment identity and route
+- Chronological custody events
+- Origin and destination inspections
+- Relevant incidents
+- Evidence and verified relationships
+- Unresolved anomalies
+- Conflicting observations
+- Missing records and linkage gaps
+- Investigator notes
+- Report version and applicable review status
+
+## 6.1 Mandatory evidence-grounding rules
+
+For every material factual claim:
+
+- Identify the supporting source record.
+- Use its actual record ID.
+- Provide a direct navigation link where supported.
+- Distinguish recorded facts from interpretations.
+- Identify contradictory evidence.
+- State when a source does not establish the claim.
+
+The AI must not invent sensor readings, transit events, custody transfers, inspection findings, photographs, timestamps, or source IDs.
+
+A valid file hash proves byte integrity relative to the stored hash; it does not prove what the photograph depicts or who caused the damage.
+
+## 6.2 Attribution and confidence
+
+Remove unsupported confidence labels such as `HIGH CONFIDENCE` for speculative root causes.
+
+Use explicit categories such as:
+
+- `OBSERVED FACT`
+- `SUPPORTED INFERENCE`
+- `UNVERIFIED HYPOTHESIS`
+- `UNDETERMINED`
+
+Do not present qualitative ratings as statistical probabilities.
+
+The AI must distinguish between:
+- Damage documented at destination
+- A change from recorded origin condition
+- A possible interval in which damage occurred
+- Evidence that narrows that interval
+- Evidence identifying a particular responsible party
+
+If the evidence cannot establish responsibility, the conclusion must remain `RESPONSIBILITY UNDETERMINED`.
+
+A report should explain exactly which missing relationships or evidence prevent a stronger conclusion.
+
+## 6.3 Report lifecycle
+
+Maintain version history and immutable certified versions.
+
+Support a workflow such as:
+
+Draft → Investigation review → Reviewer decision → Certification
+
+Only implement transitions supported by existing permissions and business rules.
+
+A revised report must create a new version when the previous report is certified. It must not silently overwrite a certified artifact.
+
+Display report generation failures accurately. A timeout must not be presented as a successful generation, and a partial or stale draft must not be mistaken for the latest completed report.
+
+# 7. Role-based responsibilities
+
+Enforce permissions on the backend as well as in the frontend.
+
+### Admin
+- Organization and membership management
+- Administrative oversight and permitted operational actions
+- Access to audit history and system-level configuration
+
+### Investigator
+- Create and maintain operational records according to current permissions
+- Link and unlink related events
+- Add investigation notes
+- Review anomalies and evidence gaps
+- Reconstruct the timeline and relationship graph
+- Run analysis and generate draft reports
+
+### Reviewer
+- Read the investigation and source records
+- Inspect relationships, evidence, anomalies, and report citations
+- Approve, reject, or request corrections according to the implemented review workflow
+- Certify reports only when authorized and required conditions are met
+
+### Viewer
+- Read-only access to permitted records and reports
+
+Do not grant extra permissions merely to make a UI button functional. Unauthorized API requests must fail securely.
+
+# 8. UI overhaul: larger, clearer, and professional
+
+The current interface must become substantially more readable and suitable for serious operational use.
+
+Do not simply increase every element's size indiscriminately. Establish a consistent, responsive design system.
+
+## 8.1 Layout and typography
+
+- Use a wide application shell with a clear navigation sidebar.
+- Provide a comfortable content width for tables, timeline details, and investigation workspaces.
+- Use a readable base font size of approximately 16px for standard body content.
+- Use larger page titles, clear section headings, and legible record metadata.
+- Avoid tiny text, cramped cards, excessively narrow columns, and oversized empty spaces.
+- Use consistent spacing, alignment, and readable line lengths.
+- Make record IDs selectable and easy to copy.
+- Ensure modals and drawers are wide enough to display complete record information.
+- Allow long notes and evidence descriptions to wrap instead of clipping.
+- Avoid relying solely on color to communicate severity or status.
+
+## 8.2 Visual style
+
+Use a restrained, professional logistics-investigation aesthetic:
+
+- High-contrast light or dark surfaces with accessible text contrast
+- Neutral backgrounds and clear content panels
+- Strong typography hierarchy
+- Subtle borders and consistent spacing
+- Clear visual distinction between primary actions, secondary actions, and destructive actions
+- Status badges for open, under review, resolved, and certified states
+- Consistent icons with text labels where meaning is not obvious
+
+Do not redesign the product as a colorful analytics dashboard. Prioritize actual investigative work and record traceability.
+
+## 8.3 Tables and record details
+
+- Make important columns visible without horizontal scrolling wherever practical.
+- Provide search, sorting, filtering, and pagination for large record collections.
+- Include loading, empty, error, and success states.
+- Preserve filters when opening and returning from record details.
+- Show linked-record counts and accessible relationship previews.
+- Make the **Link Related Record** action discoverable on every relevant record page.
+- Provide keyboard-accessible dialogs, forms, and navigation.
+
+## 8.4 Responsive behavior
+
+Support desktop and laptop workspaces first, while keeping the application usable on tablets and smaller screens.
+
+Relationship graphs must remain navigable, and important linking actions must not disappear on narrow screens.
+
+# 9. Use realistic Indian logistics data
+
+All new demo scenarios, example text, seed data, and new UI placeholders must use an Indian logistics context.
+
+Use realistic Indian locations, including examples such as:
+
+- Jaipur, Rajasthan
+- Ahmedabad, Gujarat
+- Pune, Maharashtra
+- Mumbai, Maharashtra
+- Nagpur, Maharashtra
+- Indore, Madhya Pradesh
+- Hyderabad, Telangana
+- Bengaluru, Karnataka
+- Delhi NCR
+
+Use Indian date presentation where appropriate and store timestamps consistently in UTC or the existing canonical database format. Display the local time zone explicitly where relevant.
+
+Use INR only for applicable financial fields; do not invent claim values.
+
+Example scenario:
+
+A shipment of ceramic mugs moves from Jaipur to Mumbai. An origin inspection records good packaging and an intact seal. Custody is transferred to a driver, followed by any actual recorded handovers. A destination inspection records a crushed box, cracked mugs, and a broken seal. The investigator links the inspection, incident, photographs, and custody records, then evaluates the earliest and latest points at which the condition change can be supported.
+
+The scenario must be implemented using actual persisted records, not hardcoded relationships. Existing non-Indian production data must not be rewritten merely to satisfy this requirement; use Indian context for new examples and carefully controlled test fixtures.
+
+# 10. API, persistence, and audit requirements
+
+Inspect the current API structure and extend it consistently.
+
+Implement the equivalent of endpoints for:
+
+- Creating a relationship
+- Listing relationships for a record
+- Searching candidate related records
+- Retrieving a shipment's connected investigation graph
+- Removing a relationship with authorization and audit history
+- Retrieving the unified timeline
+- Rerunning deterministic anomaly evaluation
+- Retrieving the validated AI report context
+
+Use the project's existing route conventions and validation libraries.
+
+Every write operation must validate input, enforce tenant isolation, check RBAC, and return consistent errors.
+
+Avoid N+1 database queries in timeline and graph loading. Use suitable indexes for organization, shipment, source record, target record, and relationship type.
+
+Add transactional or otherwise safe update behavior where multiple records must change together. Do not assume MongoDB transactions are available unless the current deployment supports them.
+
+Log relationship creation and removal, evidence association changes, anomaly decisions, report generation, and certification in the existing audit system.
+
+# 11. Migration and backward compatibility
+
+Existing CargoTrace records must remain accessible after the upgrade.
+
+- Inspect current production-like records before changing schemas.
+- Create reversible migrations where required.
+- Preserve original IDs and historical audit entries.
+- Do not auto-link records based only on matching descriptions, timestamps, or locations.
+- If a likely relationship is detected, offer it as a suggested link for investigator confirmation.
+- Identify legacy records that cannot be reliably connected.
+- Clearly distinguish verified historical links from newly created relationships.
+- Never rewrite a certified report to reflect current records; create a new report version instead.
+
+# 12. Testing and acceptance criteria
+
+Do not declare completion until the following scenarios pass.
+
+### Test A — Evidence association
+
+1. Create or use an authorized test shipment.
+2. Create an origin inspection and attach baseline evidence.
+3. Create a destination inspection and attach actual destination evidence.
+4. Create a damage incident.
+5. Link the incident to the destination inspection.
+6. Link the destination evidence to the inspection and incident.
+7. Open each record separately and verify that all relationships appear.
+8. Rerun deterministic analysis.
+
+Expected result: correctly linked evidence must no longer trigger missing-association findings for the relevant records. Any remaining findings must identify the precise unresolved requirement.
+
+### Test B — Multiple incidents
+
+Create two separate incident records and link each only to the appropriate inspection and supporting evidence.
+
+Expected result: evidence linked to one incident must not automatically clear missing-evidence findings on another incident.
+
+### Test C — Custody reconstruction
+
+Create multiple actual custody events with recorded locations, actors, and timestamps.
+
+Expected result: the timeline orders events correctly, displays the actual custody transitions, and highlights missing intervals without inventing events.
+
+### Test D — Tenant isolation and RBAC
+
+Attempt to link records across unauthorized organizations and attempt relationship mutations as Viewer or Reviewer where prohibited.
+
+Expected result: backend authorization rejects unauthorized operations. No cross-tenant records are exposed.
+
+### Test E — AI report
+
+Generate a report after the evidence and relationships have been verified.
+
+Expected result: the report cites actual records, uses consistent linkage information, distinguishes fact from inference, acknowledges remaining gaps, and does not assign unsupported liability.
+
+### Test F — Audit and certification
+
+Create and remove a relationship, update an anomaly decision, generate a new report version, and perform a reviewer decision.
+
+Expected result: permitted actions are audited, forbidden actions are rejected, and previously certified report versions remain unchanged.
+
+### Test G — UI usability
+
+Verify the main application, tables, record details, linking dialog, investigation workspace, timeline, graph, and report view at common laptop and desktop widths.
+
+Expected result: text is legible, primary actions are visible, long record details are accessible, and linking requires no manual database editing.
+
+# 13. Implementation sequence
+
+Implement in this order:
+
+**Phase 1 — Audit and root-cause fixes**
+- Inspect schemas, routes, permissions, evidence relationships, anomaly queries, and report context.
+- Identify and document confirmed causes of the current linking inconsistencies.
+- Add regression tests before changing behavior.
+
+**Phase 2 — Persistent relationship system**
+- Implement validated relationships, bidirectional retrieval, tenant isolation, audit logging, and safe migration.
+
+**Phase 3 — Linking controls across modules**
+- Add record search, relationship creation, relationship details, and unlink actions to every applicable module.
+
+**Phase 4 — Investigation workspace**
+- Implement the unified timeline, connected-record navigation, relationship graph, and evidence comparison.
+
+**Phase 5 — Anomaly engine and AI grounding**
+- Use canonical relationships in anomaly evaluation and report context.
+- Fix counting discrepancies, unsupported conclusions, and stale report generation.
+
+**Phase 6 — UI overhaul**
+- Apply the larger, readable design system consistently across existing and new modules.
+
+**Phase 7 — Verification**
+- Run automated tests, production builds, migration checks, and the acceptance scenarios above.
+- Fix regressions before declaring completion.
+
+Adapt this sequence to the current codebase when necessary, but do not skip security, data integrity, or acceptance tests.
+
+# 14. Required completion report
+
+When finished, provide:
+
+1. Root causes discovered.
+2. Files created or modified.
+3. Database schema and migration changes.
+4. New or changed API endpoints.
+5. RBAC and tenant-isolation changes.
+6. UI improvements and modules updated.
+7. How event linking works end to end.
+8. Test results, including failed tests.
+9. Build results for client and server.
+10. Any remaining limitations or manual steps.
+
+Do not claim a feature is complete unless it has been implemented and verified.
+
+**Definition of success:** An investigator can start with a shipment, open its actual custody events, inspect origin and destination conditions, link photographs and incidents to the appropriate records, reconstruct the timeline, resolve evidence gaps with an auditable explanation, and generate a report grounded in those verified relationships. Every relevant module must connect to the same underlying investigation data, and the UI must make those connections easy to see and manage.
